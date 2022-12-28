@@ -1,0 +1,224 @@
+~
+3
+learn.txt
+1306
+    People attend colleges or universities for a lot of different reasons. Career preparation is becoming more and more important to young people. For many, this is the primary reason to go to college, They know that the job market is competitive. At college, they can learn new skill for careers with a lot of opportunities. This means careers, such as information technology, that are expected to need a large workforce in the coming years.
+
+    Also, students go to colleges and universities to have new experiences. This often means having the opportunity to meet people different from those in their hometowns. For most students, going to college is the first time they’ve been away from home by themselves. In additions, this is the first time they’ve had to make decisions on their own. Making these decisions increases their knowledge of themselves.
+
+    Besides looking for self-knowledge, people also attend a university or college to expand their knowledge in subjects they find interesting. For many, this will be their last chance for a long time to learn about something that doesn’t relate to their career.
+
+    I would recommend that people not be so focused on a career. They should go to college to have new experiences and learn about themselves and the world they live in.
+content
+learn_copy.txt
+1572
+    People attend colleges or universities for a lot of different reasons. Career preparation is becoming more and more important to young people. For many, this is the primary reason to go to college, They know that the job market is competitive. At college, they can learn new skill for careers with a lot of opportunities. This means careers, such as information technology, that are expected to need a large workforce in the coming years.
+
+    Also, students go to colleges and universities to have new experiences. This often means having the opportunity to meet people different from those in their hometowns. For most students, going to college is the first time they’ve been away from home by themselves. In additions, this is the first time they’ve had to make decisions on their own. Making these decisions increases their knowledge of themselves.
+
+    Besides looking for self-knowledge, people also attend a university or college to expand their knowledge in subjects they find interesting. For many, this will be their last chance for a long time to learn about something that doesn’t relate to their career.
+
+    I would recommend that people not be so focused on a career. They should go to college to have new experiences and learn about themselves and the world they live in.
+content
+read.cpp
+4160
+/*
+ * Project : Reader First
+ * Time : 2022/11/16
+ * Author : YU.J.P
+ */
+
+/*
+    http://t.csdn.cn/nFC3Q
+
+    pthread_create()
+        第一个参数为指向线程标识符的指针，type: pthread_t*
+        第二个参数用来设置线程属性
+        第三个参数是线程运行函数的起始地址， type: (void*)(*)(void*)
+        第四个参数是运行函数的参数，type: void *
+
+    int sem_init(sem_t *sem, int pshared, unsigned int value);
+        //pshared:0表⽰线程间共享，非0表示进程间共享
+        //value是信号量初值，大于0表示才可以访问
+
+    摧毁 sem_t 信号量
+        int sem_destroy(sem_t *sem);
+
+    P和V操作
+        int sem_wait(sem_t *sem);//信号量等待，-1，P操作
+        int sem_post(sem_t *sem);//信号量发布，+1，V操作
+
+*/
+
+# include <stdio.h>
+# include <stdlib.h>
+# include <pthread.h>
+# include <semaphore.h>
+# include <unistd.h>
+
+/* Semaphores  */
+sem_t rMutex;    // 读信号量
+sem_t wMutex;    // 写信号量
+
+/* Reader and Writer quantity */
+int readCount = 0;
+
+/* Thread Information */
+typedef struct data {
+  int id;       // 编号
+  int opTime;   // 操作时间
+  int lastTime; // 运行时间
+} Data;
+
+/* Reader */
+void* Reader(void* param) {
+    /* Init */
+    int id = ((Data*)param)->id;
+    int opTime = ((Data*)param)->opTime;
+    int lastTime = ((Data*)param)->lastTime;
+
+    sleep(opTime);  // 模拟运行
+    printf("Thread %d: waiting to read\n", id);
+
+    sem_wait(&rMutex);  // P操作 申请readCount的访问权
+    readCount++;
+    if(readCount == 1)  // 第一个读者则阻塞写者进入
+        sem_wait(&wMutex);  // P操作
+    sem_post(&rMutex);  // V操作 释放readCount的访问权
+
+    /* 执行读文件操作 */
+    printf("Thread %d: start reading\n", id);
+    sleep(lastTime);
+    printf("Thread %d: end reading\n", id);
+
+    sem_wait(&rMutex);  // P操作 申请readCount的访问权
+    readCount--;
+    if(readCount == 0)  // 没有被阻塞的写者将被唤醒
+        sem_post(&wMutex);  // V操作
+    sem_post(&rMutex);  // V操作 释放readCount的访问权
+
+    pthread_exit(0);
+}
+
+/* Writer */
+void* Writer(void* param) {
+    int id = ((Data*)param)->id;
+    int opTime = ((Data*)param)->opTime;
+    int lastTime = ((Data*)param)->lastTime;
+
+    sleep(opTime);
+    printf("Thread %d: waiting to write\n", id);
+
+    sem_wait(&wMutex);         // P操作 阻塞后来的读者与写者
+
+    /* 执行写文件操作 */
+    printf("Thread %d: start writing\n", id);
+    sleep(lastTime);
+    printf("Thread %d: end writing\n", id);
+
+    sem_post(&wMutex);         // V操作 释放
+
+    pthread_exit(0);
+}
+
+int main() {
+
+    pthread_t tid;          // the thread identifier
+    pthread_attr_t attr;    //set of thread attributes
+
+    /* get the default attributes */
+    pthread_attr_init(&attr);
+
+    /* init the semaphores 线程间共享 初始值为1 */
+    sem_init(&rMutex, 0, 1);
+    sem_init(&wMutex, 0, 1);
+
+    /* Init quantity */
+    readCount = 0;
+
+    /* Input id, role, opTime, lastTime */
+    int id = 0;
+    while(scanf("%d", &id) != EOF) {
+
+        char role;		// Reader or Writer
+        int opTime;		// operating time
+        int lastTime;	// run time
+
+        scanf("%c%d%d", &role, &opTime, &lastTime);
+
+        /* Assignment */
+        Data* d = (Data*)malloc(sizeof(Data));
+        d->id = id;
+        d->opTime = opTime;
+        d->lastTime = lastTime;
+
+        if(role == 'R') {
+            /* 创建读者线程 */
+            printf("Create the %d thread: Reader\n", id);
+            pthread_create(&tid, &attr, Reader, d);
+
+        }
+        else if(role == 'W') {
+            /* 创建写者线程 */
+            printf("Create the %d thread: Writer\n", id);
+            pthread_create(&tid, &attr, Writer, d);
+        }
+    }
+
+    /* 销毁信号量 */
+    sem_destroy(&rMutex);
+    sem_destroy(&wMutex);
+
+    return 0;
+}
+
+/*
+    TEST:
+
+        1 R 3 5
+        2 W 4 5
+        3 R 5 2
+        4 R 6 5
+        5 W 7 3
+
+ */
+content
+3
+src
+src
+0
+2
+cpp
+cpp
+0
+0
+head
+head
+0
+0
+src_copy
+src_copy
+1
+learn.txt
+1572
+    People attend colleges or universities for a lot of different reasons. Career preparation is becoming more and more important to young people. For many, this is the primary reason to go to college, They know that the job market is competitive. At college, they can learn new skill for careers with a lot of opportunities. This means careers, such as information technology, that are expected to need a large workforce in the coming years.
+
+    Also, students go to colleges and universities to have new experiences. This often means having the opportunity to meet people different from those in their hometowns. For most students, going to college is the first time they’ve been away from home by themselves. In additions, this is the first time they’ve had to make decisions on their own. Making these decisions increases their knowledge of themselves.
+
+    Besides looking for self-knowledge, people also attend a university or college to expand their knowledge in subjects they find interesting. For many, this will be their last chance for a long time to learn about something that doesn’t relate to their career.
+
+    I would recommend that people not be so focused on a career. They should go to college to have new experiences and learn about themselves and the world they live in.
+content
+2
+cpp
+cpp
+0
+0
+head
+head
+0
+0
+user
+user
+0
+0
